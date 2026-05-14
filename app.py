@@ -18,20 +18,18 @@ st.title("📚 Book Recommendation System")
 st.caption("TF-IDF + Cosine Similarity (Dataset Buku Indonesia)")
 
 # =========================
-# LOAD DATA
+# LOAD DATA (CLOUD SAFE)
 # =========================
 @st.cache_data
 def load_data():
     df = pd.read_csv("books_indonesia.csv")
 
-    # pastikan kolom aman
     if "title" not in df.columns:
         df["title"] = ""
     if "description" not in df.columns:
         df["description"] = ""
 
     df = df[["title", "description"]].fillna("")
-
     return df
 
 df = load_data()
@@ -40,29 +38,25 @@ df = load_data()
 # SIDEBAR
 # =========================
 st.sidebar.title("ℹ️ Info")
-st.sidebar.info(
-    "Sistem rekomendasi buku berbasis TF-IDF dan Cosine Similarity "
-    "menggunakan dataset buku Indonesia."
-)
+st.sidebar.info("TF-IDF + Cosine Similarity untuk rekomendasi buku Indonesia")
 
 top_n = st.sidebar.slider("Jumlah rekomendasi", 1, 10, 5)
 
 # =========================
-# PREPROCESSING (SIMPLER & ROBUST)
+# PREPROCESSING SIMPLE (CLOUD SAFE)
 # =========================
 def preprocess(text):
-    text = text.lower()
+    text = str(text).lower()
     text = re.sub(r'[^a-zA-Z\s]', '', text)
     return text
 
-df["clean_text"] = df["title"] + " " + df["description"]
-df["clean_text"] = df["clean_text"].apply(preprocess)
+df["text"] = (df["title"] + " " + df["description"]).apply(preprocess)
 
 # =========================
-# TF-IDF (IMPORTANT: CACHE MODEL)
+# TF-IDF (CACHE)
 # =========================
 @st.cache_resource
-def train_tfidf(data):
+def build_model(data):
     tfidf = TfidfVectorizer(
         max_features=10000,
         ngram_range=(1, 2)
@@ -70,53 +64,40 @@ def train_tfidf(data):
     matrix = tfidf.fit_transform(data)
     return tfidf, matrix
 
-tfidf, tfidf_matrix = train_tfidf(df["clean_text"])
+tfidf, tfidf_matrix = build_model(df["text"])
 
 # =========================
-# RECOMMENDATION FUNCTION
+# RECOMMENDATION
 # =========================
-def recommend_books(input_text, top_n):
-    input_text = preprocess(input_text)
-    input_vector = tfidf.transform([input_text])
+def recommend_books(query, top_n):
+    query = preprocess(query)
+    vec = tfidf.transform([query])
 
-    similarity = cosine_similarity(input_vector, tfidf_matrix)
+    sim = cosine_similarity(vec, tfidf_matrix)[0]
 
-    scores = list(enumerate(similarity[0]))
-    scores = sorted(scores, key=lambda x: x[1], reverse=True)
+    top_idx = sim.argsort()[::-1][:top_n]
 
     results = []
-
-    for i, score in scores[:top_n]:
+    for i in top_idx:
         results.append({
             "title": df.iloc[i]["title"],
             "description": df.iloc[i]["description"],
-            "score": float(score)
+            "score": float(sim[i])
         })
 
     return results
 
 # =========================
-# UI INPUT
+# UI
 # =========================
-user_input = st.text_area(
-    "Masukkan deskripsi buku:",
-    placeholder="Contoh: kisah cinta remaja di bandung, atau dunia fantasy magic kingdom"
-)
+user_input = st.text_area("Masukkan deskripsi buku:")
 
-search_btn = st.button("🔍 Cari Rekomendasi")
+if st.button("🔍 Cari Rekomendasi"):
 
-# =========================
-# OUTPUT
-# =========================
-if search_btn:
-
-    if user_input.strip() == "":
+    if not user_input.strip():
         st.warning("Input tidak boleh kosong!")
     else:
-        with st.spinner("Mencari rekomendasi..."):
-            results = recommend_books(user_input, top_n)
-
-        st.success("Rekomendasi ditemukan!")
+        results = recommend_books(user_input, top_n)
 
         for r in results:
             st.markdown(
@@ -126,10 +107,11 @@ if search_btn:
                     border-radius:12px;
                     border:1px solid #ddd;
                     margin-bottom:12px;
-                    background:linear-gradient(90deg,#f9f9f9,#f1f5ff);
+                    background:linear-gradient(90deg,#111827,#1f2937);
+                    color:white;
                 ">
                     <h4>📖 {r['title']}</h4>
-                    <p>{r['description'][:300]}...</p>
+                    <p>{r['description'][:250]}...</p>
                     <p><b>Similarity:</b> {round(r['score'],4)}</p>
                 </div>
                 """,
